@@ -43,7 +43,7 @@ int main()
 	VencCyclicIntraRefresh sIntraRefresh;
 	unsigned int src_width,src_height,dst_width,dst_height;
 	unsigned char *uv_tmp_buffer = NULL;
-	int status, size, len;
+	int ret = 0;
 	VencROIConfig sRoiConfig[4];
 
 	src_width = 1920;
@@ -102,22 +102,20 @@ int main()
 	exifinfo.ThumbHeight = 144;
 
 	//* h264 param
-	h264Param.bEntropyCodingCABAC = 1;
-	h264Param.nBitrate = 4*1024*1024; /* bps */
-	h264Param.nFramerate = 30; /* fps */
-	h264Param.nCodingMode = VENC_FRAME_CODING;
-//	h264Param.nCodingMode = VENC_FIELD_CODING;
-	
-	h264Param.nMaxKeyInterval = 30;
+	memset(&h264Param, 0, sizeof(VencH264Param));
 	h264Param.sProfileLevel.nProfile = VENC_H264ProfileMain;
 	h264Param.sProfileLevel.nLevel = VENC_H264Level31;
+	h264Param.bEntropyCodingCABAC = 1;	///* 0:CAVLC 1:CABAC*/
 	h264Param.sQPRange.nMinqp = 10;
 	h264Param.sQPRange.nMaxqp = 40;
+	h264Param.nFramerate = 30; /* fps */
+	h264Param.nMaxKeyInterval = 30;
+	h264Param.nBitrate = 4*1024*1024; /* bps */
+	h264Param.nCodingMode = VENC_FRAME_CODING;	//VENC_FIELD_CODING
+	
 
-
-	//int codecType = VENC_CODEC_JPEG;//VENC_CODEC_H264;
-	int codecType = VENC_CODEC_H264;
-	int testNumber = 1;
+	int codecType = VENC_CODEC_H264;	//VENC_CODEC_JPEG
+	int testNumber = 180;
 
 	strcpy((char*)exifinfo.CameraMake,		"allwinner make test");
 	strcpy((char*)exifinfo.CameraModel,		"allwinner model test");
@@ -132,7 +130,6 @@ int main()
 	exifinfo.FNumber.num = 20;
 	exifinfo.FNumber.den = 10;
 	exifinfo.ISOSpeed = 50;
-
 
 	exifinfo.ExposureBiasValue.num= -4;
 	exifinfo.ExposureBiasValue.den= 1;
@@ -165,30 +162,14 @@ int main()
 		in_file = fopen("./1080p.yuv", "r");
 		if(in_file == NULL)
 		{
-			logv("open in_file fail\n");
+			loge("open in_file fail\n");
 			return -1;
 		}
 		
 		out_file = fopen("./1080p.264", "wb");
 		if(out_file == NULL)
 		{
-			logv("open out_file fail\n");
-			return -1;
-		}
-	}
-	else
-	{
-		in_file = fopen("./1080p.yuv", "r");
-		if(in_file == NULL)
-		{
-			logv("open in_file fail\n");
-			return -1;
-		}
-		
-		out_file = fopen("./1080p.jpg", "wb");
-		if(out_file == NULL)
-		{
-			logv("open out_file fail\n");
+			loge("open out_file fail\n");
 			return -1;
 		}
 	}
@@ -210,21 +191,14 @@ int main()
 	
 	//1. 
 	pVideoEnc = VideoEncCreate(codecType);
+	if(!pVideoEnc)
+		loge("VideoEncCreate");
 
-	printf("<%s-%d> pVideoEnc:%p\n", __func__, __LINE__, pVideoEnc);
+	logd("pVideoEnc: %p", pVideoEnc);
 	
-	if(codecType == VENC_CODEC_JPEG)
+	if(codecType == VENC_CODEC_H264)
 	{
-		int quality = 80;
-		
-	  	status = VideoEncSetParameter(pVideoEnc, VENC_IndexParamJpegExifInfo, &exifinfo);
-		VideoEncSetParameter(pVideoEnc, VENC_IndexParamJpegQuality, &quality);
-		
-		printf("<%d> status:0x%x,%d\n", __LINE__, status, status);
-	}
-	else if(codecType == VENC_CODEC_H264)
-	{
-		int value;
+		int value = 0;
 		
 		VideoEncSetParameter(pVideoEnc, VENC_IndexParamH264Param, &h264Param);
 
@@ -248,7 +222,10 @@ int main()
 	}
 
 	//2. 
-	VideoEncInit(pVideoEnc, &baseConfig);
+	ret = VideoEncInit(pVideoEnc, &baseConfig);
+	if(ret)
+		loge("VideoEncInit");
+	
 
 	if(codecType == VENC_CODEC_H264)
 	{
@@ -257,125 +234,134 @@ int main()
 		fwrite(sps_pps_data.pBuffer, 1, sps_pps_data.nLength, out_file);
 		logd("sps_pps_data.nLength: %d", sps_pps_data.nLength);
 		for(head_num=0; head_num<sps_pps_data.nLength; head_num++)
+		{
+			;
 			logd("the sps_pps :%02x\n", *(sps_pps_data.pBuffer+head_num));
+		}
 	}
 
-	if(codecType == VENC_CODEC_JPEG)
-	{
-		testNumber = 1;
-	}
-
-	//status = AllocInputBuffer(pVideoEnc, &bufferParam);
+	//ret = AllocInputBuffer(pVideoEnc, &bufferParam);
 
 
 	//3.1
-	status = ion_alloc_open();
-	if (status < 0)
-		goto out;
+	ret = ion_alloc_open();
+	if(ret)
+		loge("ion_alloc_open");
 
-	printf("<%d> status:0x%x,%d\n", __LINE__, status, status);
+	inputBuffer.pAddrVirY = (char *)ion_alloc_alloc(baseConfig.nInputWidth*baseConfig.nInputHeight);
+	if (!inputBuffer.pAddrVirY)
+		loge("inputBuffer.pAddrVirY is NULL");
 
-	size = baseConfig.nInputWidth*baseConfig.nInputHeight;
-	inputBuffer.pAddrVirY = (char *)ion_alloc_alloc(size);
-	if (NULL == inputBuffer.pAddrVirY)
-		goto out;
-
-	inputBuffer.pAddrVirC = (char *)ion_alloc_alloc(size/2);
-	if (NULL == inputBuffer.pAddrVirC)
-		goto out;
+	inputBuffer.pAddrVirC = (char *)ion_alloc_alloc(baseConfig.nInputWidth*baseConfig.nInputHeight/2);
+	if (!inputBuffer.pAddrVirC)
+		loge("inputBuffer.pAddrVirC is NULL");
 
 	inputBuffer.pAddrPhyY = (char *)ion_alloc_vir2phy(inputBuffer.pAddrVirY);
 	inputBuffer.pAddrPhyC = (char *)ion_alloc_vir2phy(inputBuffer.pAddrVirC);
 
-	//ion_flush_cache(inputBuffer.pAddrVirY, size);
-//	ion_flush_cache(inputBuffer.pAddrVirC, size/2);
+	ion_flush_cache(inputBuffer.pAddrVirY, baseConfig.nInputWidth*baseConfig.nInputHeight);
+	ion_flush_cache(inputBuffer.pAddrVirC, baseConfig.nInputWidth*baseConfig.nInputHeight/2);
 
-	printf("y:0x%08x 0x%08x\n c:0x%08x 0x%08x\n", inputBuffer.pAddrPhyY, inputBuffer.pAddrVirY, inputBuffer.pAddrPhyC, inputBuffer.pAddrVirC);
-
+	logd("pAddrPhy&VirY:0x%08x 0x%08x\n pAddrPhy&VirY:0x%08x 0x%08x\n", inputBuffer.pAddrPhyY, inputBuffer.pAddrVirY, inputBuffer.pAddrPhyC, inputBuffer.pAddrVirC);
 
 	if(baseConfig.eInputFormat == VENC_PIXEL_YUV420SP)
 	{
 		uv_tmp_buffer = (unsigned char*)malloc(baseConfig.nInputWidth*baseConfig.nInputHeight/2);
 		if(uv_tmp_buffer == NULL)
 		{
-			logv("malloc uv_tmp_buffer fail\n");
+			loge("malloc uv_tmp_buffer fail\n");
 			return -1;
 		}
 	}
-	
-	while(testNumber > 0)
+
+	int i = 0;
+	for(i=0; i<testNumber; i++)
 	{
 		//GetOneAllocInputBuffer(pVideoEnc, &inputBuffer);
+		unsigned int sizeY, sizeC;
+		
+		sizeY = fread(inputBuffer.pAddrVirY, 1, baseConfig.nInputWidth*baseConfig.nInputHeight, in_file);
+		sizeC = fread(inputBuffer.pAddrVirC, 1, baseConfig.nInputWidth*baseConfig.nInputHeight/2, in_file);
+
+		if((sizeY!= baseConfig.nInputWidth*baseConfig.nInputHeight) || (sizeC!= baseConfig.nInputWidth*baseConfig.nInputHeight/2))
 		{
-			unsigned int size1, size2;
-			
-			size1 = fread(inputBuffer.pAddrVirY, 1, baseConfig.nInputWidth*baseConfig.nInputHeight, in_file);
-			size2 = fread(inputBuffer.pAddrVirC, 1, baseConfig.nInputWidth*baseConfig.nInputHeight/2, in_file);
+			fseek(in_file, 0L, SEEK_SET);
+			sizeY = fread(inputBuffer.pAddrVirY, 1, baseConfig.nInputWidth*baseConfig.nInputHeight, in_file);
+			sizeC = fread(inputBuffer.pAddrVirC, 1, baseConfig.nInputWidth*baseConfig.nInputHeight/2, in_file);
+		}
 
-			if((size1!= baseConfig.nInputWidth*baseConfig.nInputHeight) || (size2!= baseConfig.nInputWidth*baseConfig.nInputHeight/2))
-			{
-				fseek(in_file, 0L, SEEK_SET);
-				size1 = fread(inputBuffer.pAddrVirY, 1, baseConfig.nInputWidth*baseConfig.nInputHeight, in_file);
-				size2 = fread(inputBuffer.pAddrVirC, 1, baseConfig.nInputWidth*baseConfig.nInputHeight/2, in_file);
-			}
-
-			printf("%p %p\n", inputBuffer.pAddrVirY, inputBuffer.pAddrVirC);
-			
-			if(baseConfig.eInputFormat == VENC_PIXEL_YUV420SP)
-			{
-				//status = yu12_nv12(baseConfig.nInputWidth, baseConfig.nInputHeight, inputBuffer.pAddrVirC, uv_tmp_buffer);
-				printf("<%d> status:0x%x,%d\n", __LINE__, status, status);
-			}
-
-			//memset(inputBuffer.pAddrVirC, 0, baseConfig.nInputWidth*baseConfig.nInputHeight/2);
+		inputBuffer.bEnableCorp = 0;
+		inputBuffer.nPts = i;
+		logd("pAddrVirY:%p, pAddrVirC:%p\n", inputBuffer.pAddrVirY, inputBuffer.pAddrVirC);
+		
+		logd("inp nID:%lu, nPts:%lld, nFlag:%u, ispPicVar:%d\n",
+			inputBuffer.nID, inputBuffer.nPts, inputBuffer.nFlag, inputBuffer.ispPicVar);
+		
+		if(baseConfig.eInputFormat == VENC_PIXEL_YUV420SP)
+		{
+			ret = yu12_nv12(baseConfig.nInputWidth, baseConfig.nInputHeight, inputBuffer.pAddrVirC, uv_tmp_buffer);
+			if(ret)
+				loge("yu12_nv12");
 		}
 		
-		inputBuffer.bEnableCorp = 0;
+		//added
 		inputBuffer.sCropInfo.nLeft =  0;
 		inputBuffer.sCropInfo.nTop  =  0;
 		inputBuffer.sCropInfo.nWidth  =  1920;
 		inputBuffer.sCropInfo.nHeight =  1080;
 
-		ion_flush_cache(inputBuffer.pAddrVirY, size);
-		ion_flush_cache(inputBuffer.pAddrVirC, size/2);
-		//status = FlushCacheAllocInputBuffer(pVideoEnc, &inputBuffer);
-		//printf("<%d> status:0x%x,%d\n", __LINE__, status, status);
+		//ion_flush_cache(inputBuffer.pAddrVirY, baseConfig.nInputWidth*baseConfig.nInputHeight);
+		//ion_flush_cache(inputBuffer.pAddrVirC, baseConfig.nInputWidth*baseConfig.nInputHeight/2);
+		ret = FlushCacheAllocInputBuffer(pVideoEnc, &inputBuffer);
 
-		status = AddOneInputBuffer(pVideoEnc, &inputBuffer);
-		printf("<%d> status:0x%x,%d\n", __LINE__, status, status);
+		ret = AddOneInputBuffer(pVideoEnc, &inputBuffer);
+		if(ret)
+			loge("AddOneInputBuffer");
 
-		status = VideoEncodeOneFrame(pVideoEnc);
-		printf("<%d> status:0x%x,%d\n", __LINE__, status, status);
+		ret = FlushCacheAllocInputBuffer(pVideoEnc, &inputBuffer);
+		if(ret)
+			loge("FlushCacheAllocInputBuffer");
 
-		status = AlreadyUsedInputBuffer(pVideoEnc,&inputBuffer);
-		printf("<%d> status:0x%x,%d\n", __LINE__, status, status);
+
+		ret = VideoEncodeOneFrame(pVideoEnc);
+		if(ret)
+			loge("VideoEncodeOneFrame, ret: %d.", ret);
+			
+		ret = AlreadyUsedInputBuffer(pVideoEnc,&inputBuffer);
+		if(ret)
+			loge("AlreadyUsedInputBuffer");
 		
-		//status = ReturnOneAllocInputBuffer(pVideoEnc, &inputBuffer);
-		printf("<%d> status:0x%x,%d\n", __LINE__, status, status);
+		//ret = ReturnOneAllocInputBuffer(pVideoEnc, &inputBuffer);
+		//if(ret)
+			//loge("ReturnOneAllocInputBuffer");
 
-		status = GetOneBitstreamFrame(pVideoEnc, &outputBuffer);
-		printf("<%d> status:0x%x,%d\n", __LINE__, status, status);
+		ret = GetOneBitstreamFrame(pVideoEnc, &outputBuffer);
+		if(ret)
+			loge("GetOneBitstreamFrame");
 
-		printf("<%d> size0:%d, size1:%d\n", __LINE__, outputBuffer.nSize0, outputBuffer.nSize1);
+
+		logd("inputbuf pAddrVirY:%p, pAddrVirC:%p\n", inputBuffer.pAddrVirY, inputBuffer.pAddrVirC);
 		
-		printf("data0:%p, data1:%p\n", outputBuffer.pData0, outputBuffer.pData1);
+		logd("outputbuf data0:%p, data1:%p\n", outputBuffer.pData0, outputBuffer.pData1);
+
+		logd("outputbuf size0:%d, size1:%d\n", outputBuffer.nSize0, outputBuffer.nSize1);
+		
+
+
+		ion_flush_cache(inputBuffer.pAddrVirY, baseConfig.nInputWidth*baseConfig.nInputHeight);
+		ion_flush_cache(inputBuffer.pAddrVirC, baseConfig.nInputWidth*baseConfig.nInputHeight/2);
+
+
+		if (outputBuffer.nFlag & VENC_BUFFERFLAG_KEYFRAME) {
+			VideoEncGetParameter(pVideoEnc, VENC_IndexParamH264SPSPPS, &sps_pps_data);
+			fwrite(sps_pps_data.pBuffer, 1, sps_pps_data.nLength, out_file);
+		}
 
 		if(outputBuffer.nSize0)
-		{
-			//ion_flush_cache(inputBuffer.pAddrVirY, outputBuffer.nSize0);
-			//MemAdapterFlushCache(outputBuffer.pData0, outputBuffer.nSize0);
-			
-
-			//len = outputBuffer.nSize0;
-
 			fwrite(outputBuffer.pData0, 1, outputBuffer.nSize0, out_file);
-			//fwrite(inputBuffer.pAddrVirY, 1, outputBuffer.nSize0, out_file);
-		}
 		
 		if(outputBuffer.nSize1)
-		{
 			fwrite(outputBuffer.pData1, 1, outputBuffer.nSize1, out_file);
-		}
 
 		FreeOneBitStreamFrame(pVideoEnc, &outputBuffer);
 
@@ -383,7 +369,7 @@ int main()
 		if(h264Param.nCodingMode==VENC_FIELD_CODING && codecType==VENC_CODEC_H264)
 		{
 			GetOneBitstreamFrame(pVideoEnc, &outputBuffer);
-			//logi("size: %d,%d", outputBuffer.nSize0,outputBuffer.nSize1);
+			logd("oubuffer size: %d, %d", outputBuffer.nSize0,outputBuffer.nSize1);
 
 			fwrite(outputBuffer.pData0, 1, outputBuffer.nSize0, out_file);
 
@@ -395,13 +381,12 @@ int main()
 			FreeOneBitStreamFrame(pVideoEnc, &outputBuffer);
 		}
 		
-		testNumber--;
 	}
 
-	sync();
+	//sync();
 out:
 
-	printf("ext ion y c, %p, %p\n", inputBuffer.pAddrVirY, inputBuffer.pAddrVirC);
+	logd("out inputbuf: pAddrVirY: %p, pAddrVirC: %p\n", inputBuffer.pAddrVirY, inputBuffer.pAddrVirC);
 
 	if (inputBuffer.pAddrVirY)
 		ion_alloc_free(inputBuffer.pAddrVirY);

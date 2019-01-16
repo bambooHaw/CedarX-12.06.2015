@@ -1,8 +1,9 @@
 CC=arm-buildroot-linux-gnueabihf-gcc
 DEPEND_PATH := $(shell pwd)/../../src
-APP_NAME=encoderApp
+#APP_NAME=encoderDemo
+APP_NAME=VideoTest
 all:
-	$(CC) encoderDemo.c \
+	$(CC) $(APP_NAME).c \
 			-L$(DEPEND_PATH)/install/lib/full-package-name/ \
 			-lcedar_vencoder -lcedar_common -lcedar_base -lcedar_ion\
 			-I$(DEPEND_PATH)/base/include/ \
