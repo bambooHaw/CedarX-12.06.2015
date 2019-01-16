@@ -24,6 +24,7 @@ function privateCompileEnv()
 	#just do this usrs' env for ion
 	export LDFLAGS=-L$(pwd)/ion
 	export LIBS=-lcedar_ion
+	cp $(pwd)/ion/Makefile_default $(pwd)/ion/Makefile
 }
 
 

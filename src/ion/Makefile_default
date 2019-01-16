@@ -1,0 +1,27 @@
+CPPFLAGS = -Iinclude -I../base/include
+DEP_CFLAGS = -MMD -MP -MF $(@:%.o=%.d) -MT $(@:%.o=%.d)
+CFLAGS = -pthread -Wall -O3 -fpic -fomit-frame-pointer
+LDFLAGS = -shared -Wl,-soname,$(BINS)
+
+BINS = libcedar_ion.so
+SRCS = ion_alloc.c
+OBJS = $(SRCS:.c=.o)
+DEPS = $(SRCS:.c=.d)
+
+.PHONY: all clean
+
+all: $(OBJS) $(BINS)
+
+$(BINS): $(OBJS)
+	$(CC) $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) $^ $(LOADLIBES) $(LDLIBS) -o $@
+
+%.o: %.c
+	$(CC) $(DEP_CFLAGS) $(CFLAGS) $(CPPFLAGS) -c -o $@ $<
+
+install:
+	cp $(BINS) ../install/lib/full-package-name/ -v
+
+clean:
+	$(RM) $(BINS) $(OBJS) $(DEPS)
+
+include $(wildcard $(DEPS))
